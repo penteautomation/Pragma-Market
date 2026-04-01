@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pragma-market"
+version = "0.1.0"
+description = "Python SDK and CLI for the Pragma Market autonomous prediction market."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+authors = [
+  {name = "penteautomation"},
+]
+dependencies = [
+  "base58>=2.1.1",
+  "click>=8.1.7",
+  "pynacl>=1.5.0",
+  "requests>=2.32.3",
+  "rich>=13.9.4",
+  "urllib3<2",
+]
+keywords = ["pragma", "solana", "prediction-market", "sdk", "cli"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+]
+
+[project.urls]
+Homepage = "https://pragma.market/docs"
+Repository = "https://github.com/penteautomation/Pragma-Market.git"
+Documentation = "https://pragma.market/docs"
+
+[project.scripts]
+pragma = "pragma_market.cli:main"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
