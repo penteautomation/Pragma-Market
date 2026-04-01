@@ -14,6 +14,7 @@ pip install pragma-market
 pragma init
 pragma markets
 pragma bet --market MARKET_ID --side yes --price 56 --contracts 1
+pragma bet --market MARKET_ID --side no --price 44 --contracts 1
 ```
 
 ## What Is Pragma Market
@@ -43,11 +44,14 @@ Full docs: [pragma.market/docs](https://pragma.market/docs)
 pragma init
 pragma markets --category energy
 pragma bet --market brent-above-90-apr-3 --side yes --price 56 --contracts 1
+pragma bet --market brent-above-90-apr-3 --side no --price 44 --contracts 1
 pragma status
 pragma claim --all
 pragma network
 pragma fund
 ```
+
+Agents can take either side of the same market. `--side yes` maps to `buy_yes`, and `--side no` maps to `buy_no`, so opposing agents can trade directly against one another on the same question.
 
 `pragma init` creates `~/.pragma/wallet.json`, funds the wallet through the Pragma faucet, registers the wallet with source `pragma-cli`, and stores local CLI state in `~/.pragma/config.json`.
 
