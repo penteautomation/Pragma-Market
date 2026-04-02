@@ -4,13 +4,21 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import sys
 import time
 from typing import Any, Optional, Union
 
 import click
 import requests
 
-from .exceptions import PragmaAPIError, PragmaAuthError, PragmaConfigError
+from . import __version__
+from .exceptions import (
+    PragmaAPIError,
+    PragmaAuthError,
+    PragmaConfigError,
+    PragmaNotRegisteredError,
+    PragmaOutdatedError,
+)
 from .markets import filter_markets
 from .orders import normalize_side
 from .utils import (
@@ -30,6 +38,7 @@ from .wallet import generate_wallet, load_wallet, save_wallet
 DEFAULT_BASE_URL = "https://api.pragma.market"
 DEFAULT_SOURCE = "pragma-cli"
 DEFAULT_CONTACT = "pragma-cli@pragma.market"
+_VERSION_CHECK_CACHE: dict[str, dict[str, Any]] = {}
 
 
 @dataclass
@@ -63,6 +72,7 @@ class PragmaClient:
         self._config = self._load_config()
         if owner:
             self._config.owner = owner
+        self._check_sdk_compatibility()
 
     def _load_config(self) -> LocalAgentConfig:
         payload = load_json(self.config_path, default={}) or {}
@@ -96,7 +106,7 @@ class PragmaClient:
     @property
     def owner(self) -> str:
         if not self._config.owner:
-            raise PragmaConfigError(
+            raise PragmaNotRegisteredError(
                 "No registered agent name found. Run `pragma init` or call register() first."
             )
         return self._config.owner
@@ -168,6 +178,60 @@ class PragmaClient:
 
     def get_network(self) -> dict[str, Any]:
         return self._request("GET", "/api/network")
+
+    def _parse_version(self, value: str) -> tuple[int, int, int]:
+        text = str(value or "0.0.0").strip().split("-", 1)[0]
+        parts = [segment for segment in text.split(".") if segment != ""]
+        normalized = []
+        for segment in parts[:3]:
+            try:
+                normalized.append(int(segment))
+            except ValueError:
+                normalized.append(0)
+        while len(normalized) < 3:
+            normalized.append(0)
+        return tuple(normalized[:3])
+
+    def _check_sdk_compatibility(self) -> None:
+        cache_key = self.base_url
+        cached = _VERSION_CHECK_CACHE.get(cache_key)
+        if cached:
+            if cached.get("error"):
+                raise cached["error"]
+            if cached.get("warning"):
+                print(cached["warning"], file=sys.stderr)
+            return
+        try:
+            network = self.get_network()
+        except Exception:
+            _VERSION_CHECK_CACHE[cache_key] = {}
+            return
+        sdk_min_version = str(network.get("sdk_min_version") or "0.0.0")
+        installed = self._parse_version(__version__)
+        minimum = self._parse_version(sdk_min_version)
+        warning = None
+        error = None
+        if installed < minimum:
+            major_gap = minimum[0] - installed[0]
+            if major_gap >= 2:
+                error = PragmaOutdatedError(
+                    f"Installed pragma-market SDK v{__version__} is too old for API minimum {sdk_min_version}."
+                )
+            else:
+                warning = (
+                    f"⚠️  Your pragma-market SDK (v{__version__}) may be outdated.\n"
+                    f"    Run: pip install --upgrade pragma-market"
+                )
+        _VERSION_CHECK_CACHE[cache_key] = {
+            "warning": warning,
+            "error": error,
+            "api_version": network.get("api_version"),
+            "sdk_min_version": sdk_min_version,
+        }
+        if error:
+            raise error
+        if warning:
+            print(warning, file=sys.stderr)
 
     def get_runtime(self) -> dict[str, Any]:
         return self._request("GET", "/api/exchange/runtime")

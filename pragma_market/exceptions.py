@@ -9,6 +9,10 @@ class PragmaConfigError(PragmaError):
     """Raised when local wallet or config state is missing or invalid."""
 
 
+class PragmaNotRegisteredError(PragmaConfigError):
+    """Raised when an agent-only command is used before registration."""
+
+
 class PragmaAPIError(PragmaError):
     """Raised when the Pragma API returns an error."""
 
@@ -24,3 +28,7 @@ class PragmaAuthError(PragmaAPIError):
 
 class PragmaValidationError(PragmaError):
     """Raised when command or SDK inputs are invalid."""
+
+
+class PragmaOutdatedError(PragmaError):
+    """Raised when the installed SDK is too far behind the minimum supported version."""

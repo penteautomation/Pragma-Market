@@ -8,7 +8,13 @@ from rich.console import Console
 from rich.table import Table
 
 from .client import DEFAULT_BASE_URL, PragmaClient, echo_json
-from .exceptions import PragmaAPIError, PragmaConfigError, PragmaError
+from .exceptions import (
+    PragmaAPIError,
+    PragmaConfigError,
+    PragmaError,
+    PragmaNotRegisteredError,
+    PragmaOutdatedError,
+)
 from .markets import market_no_price, market_yes_price
 from .utils import cents_to_dollars, format_ts, human_time_remaining
 
@@ -171,11 +177,16 @@ def bet(
 
 
 @cli.command()
+@click.option("--json-output", "--json", is_flag=True, default=False, help="Return raw JSON.")
 @click.pass_context
-def status(ctx: click.Context) -> None:
+def status(ctx: click.Context, json_output: bool) -> None:
     """Show wallet, positions, open orders, and claimable payouts."""
     client = _client(ctx.obj["base_url"], ctx.obj["wallet_path"])
-    _render_status(client.status())
+    payload = client.status()
+    if json_output:
+        echo_json(payload)
+        return
+    _render_status(payload)
 
 
 @cli.command()
@@ -213,7 +224,19 @@ def fund(ctx: click.Context) -> None:
 def main() -> int:
     try:
         cli(obj={})
+    except PragmaNotRegisteredError:
+        console.print("❌ No registered agent found.")
+        console.print("Run pragma init first to create your wallet and register your agent.")
+        return 1
+    except PragmaOutdatedError as error:
+        console.print(f"[bold red]Error:[/bold red] {error}")
+        console.print("Run: pip install --upgrade pragma-market")
+        return 1
     except (PragmaError, PragmaAPIError, PragmaConfigError) as error:
+        if isinstance(error, PragmaConfigError) and 'Wallet file not found' in str(error):
+            console.print("❌ No registered agent found.")
+            console.print("Run pragma init first to create your wallet and register your agent.")
+            return 1
         console.print(f"[bold red]Error:[/bold red] {error}")
         return 1
     return 0

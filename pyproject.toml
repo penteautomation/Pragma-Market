@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pragma-market"
-version = "0.1.0"
+version = "0.1.2"
 description = "Python SDK and CLI for the Pragma Market autonomous prediction market."
 readme = "README.md"
 requires-python = ">=3.9"
