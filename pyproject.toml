@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pragma-market"
-version = "0.1.2"
-description = "Python SDK and CLI for the Pragma Market autonomous prediction market."
+version = "0.2.2"
+description = "Python SDK and CLI for agent-native trading on Pragma Market."
 readme = "README.md"
 requires-python = ">=3.9"
 license = "MIT"
@@ -20,7 +20,7 @@ dependencies = [
   "rich>=13.9.4",
   "urllib3<2",
 ]
-keywords = ["pragma", "solana", "prediction-market", "sdk", "cli"]
+keywords = ["pragma", "solana", "prediction-market", "sdk", "cli", "ai-agents", "autonomous-trading"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Developers",

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import random
 import sys
 import time
 from typing import Any, Optional, Union
@@ -126,43 +127,71 @@ class PragmaClient:
         owner: Optional[str] = None,
     ) -> dict[str, Any]:
         url = f"{self.base_url}{route}"
-        headers = {"Accept": "application/json"}
-        if json_payload is not None:
-            headers["Content-Type"] = "application/json"
-        if signed:
-            timestamp = utc_now_iso()
-            message = build_signed_request_message(
+        max_attempts = 5
+        for attempt in range(1, max_attempts + 1):
+            headers = {"Accept": "application/json"}
+            if json_payload is not None:
+                headers["Content-Type"] = "application/json"
+            if signed:
+                timestamp = utc_now_iso()
+                message = build_signed_request_message(
+                    method=method,
+                    route=route,
+                    owner=owner,
+                    wallet=self.wallet_address,
+                    timestamp=timestamp,
+                    body_hash=request_body_hash(json_payload or {}),
+                )
+                headers.update(
+                    {
+                        "X-Pragma-Wallet": self.wallet_address,
+                        "X-Pragma-Signature": self.wallet.sign_message(message),
+                        "X-Pragma-Timestamp": timestamp,
+                    }
+                )
+            response = self.session.request(
                 method=method,
-                route=route,
-                owner=owner,
-                wallet=self.wallet_address,
-                timestamp=timestamp,
-                body_hash=request_body_hash(json_payload or {}),
+                url=url,
+                params=params,
+                json=json_payload,
+                headers=headers,
+                timeout=self.timeout,
             )
-            headers.update(
-                {
-                    "X-Pragma-Wallet": self.wallet_address,
-                    "X-Pragma-Signature": self.wallet.sign_message(message),
-                    "X-Pragma-Timestamp": timestamp,
-                }
-            )
-        response = self.session.request(
-            method=method,
-            url=url,
-            params=params,
-            json=json_payload,
-            headers=headers,
-            timeout=self.timeout,
+            try:
+                payload = response.json() if response.text else {}
+            except requests.JSONDecodeError:
+                payload = {"raw": response.text}
+            if response.ok:
+                return payload
+            if self._should_retry_request(response.status_code, payload) and attempt < max_attempts:
+                retry_after = self._retry_delay_seconds(payload, attempt)
+                time.sleep(retry_after)
+                continue
+            message = payload.get("error") or payload.get("message") or response.text or response.reason
+            error_cls = PragmaAuthError if response.status_code == 401 else PragmaAPIError
+            raise error_cls(message, status_code=response.status_code, payload=payload)
+        raise PragmaAPIError("request failed after retries")
+
+    def _should_retry_request(self, status_code: int, payload: dict[str, Any]) -> bool:
+        if status_code in {429, 502, 503, 504}:
+            return True
+        text = str(payload.get("error") or payload.get("message") or "").lower()
+        return (
+            "too many requests" in text
+            or "rate limit" in text
+            or "rpc throttle guard saturated" in text
+            or "specific rpc call" in text
         )
-        try:
-            payload = response.json() if response.text else {}
-        except requests.JSONDecodeError:
-            payload = {"raw": response.text}
-        if response.ok:
-            return payload
-        message = payload.get("error") or payload.get("message") or response.text or response.reason
-        error_cls = PragmaAuthError if response.status_code == 401 else PragmaAPIError
-        raise error_cls(message, status_code=response.status_code, payload=payload)
+
+    def _retry_delay_seconds(self, payload: dict[str, Any], attempt: int) -> float:
+        retry_after = payload.get("retryAfterSeconds")
+        if retry_after is not None:
+            try:
+                return max(1.0, min(float(retry_after), 12.0))
+            except (TypeError, ValueError):
+                pass
+        base = min(2 ** attempt, 20)
+        return float(base) + random.uniform(0.0, 0.5)
 
     def create_wallet(self, path: Optional[Union[str, Path]] = None, *, overwrite: bool = False) -> Path:
         wallet_path = expand_path(path or self.wallet_path)
@@ -235,6 +264,11 @@ class PragmaClient:
 
     def get_runtime(self) -> dict[str, Any]:
         return self._request("GET", "/api/exchange/runtime")
+
+    def get_network_label(self) -> str:
+        network = self.get_network()
+        cluster = str(network.get("network") or "unknown").strip()
+        return f"solana-{cluster}" if cluster else "solana-unknown"
 
     def get_balance(self, wallet_address: Optional[str] = None) -> dict[str, Any]:
         address = wallet_address or self.wallet_address
@@ -345,6 +379,13 @@ class PragmaClient:
         payload["count"] = len(payload["markets"])
         return payload
 
+    def get_open_markets(self, *, category: Optional[str] = None, limit: Optional[int] = None) -> dict[str, Any]:
+        payload = self.get_markets(category=category, status="open")
+        if limit is not None:
+            payload["markets"] = payload.get("markets", [])[: max(0, int(limit))]
+            payload["count"] = len(payload["markets"])
+        return payload
+
     def get_market_detail(self, market_id: str) -> dict[str, Any]:
         return self._request("GET", f"/api/exchange/markets/{market_id}")
 
@@ -389,6 +430,25 @@ class PragmaClient:
 
     def get_portfolio(self, owner: Optional[str] = None) -> dict[str, Any]:
         return self._request("GET", "/api/exchange/portfolio", params={"owner": owner or self.owner})
+
+    def get_leaderboard(self, *, limit: Optional[int] = None) -> dict[str, Any]:
+        payload = self._request("GET", "/api/exchange/leaderboard")
+        rows = payload.get("leaderboard", [])
+        if limit is not None:
+            rows = rows[: max(0, int(limit))]
+        return {
+            **payload,
+            "leaderboard": rows,
+            "count": len(rows),
+        }
+
+    def get_recent_fills(self, *, limit: Optional[int] = None, market_id: Optional[str] = None) -> dict[str, Any]:
+        params = {}
+        if limit is not None:
+            params["limit"] = int(limit)
+        if market_id:
+            params["marketId"] = market_id
+        return self._request("GET", "/recent-bets", params=params or None)
 
     def get_agent_profile(self, agent_name_or_id: Optional[str] = None) -> dict[str, Any]:
         identifier = agent_name_or_id or self._config.agent_id or self.owner

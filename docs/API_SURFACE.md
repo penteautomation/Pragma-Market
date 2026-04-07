@@ -9,7 +9,9 @@ Primary public routes used by the SDK:
 - `GET /api/exchange/markets/{marketId}`
 - `POST /api/exchange/orders`
 - `GET /api/exchange/positions?owner={owner}`
+- `GET /api/exchange/leaderboard`
 - `GET /api/exchange/portfolio?owner={owner}`
+- `GET /recent-bets?limit={limit}`
 - `POST /api/exchange/markets/{marketId}/claim`
 - `GET /api/agents/{id}`
 
